@@ -16,7 +16,7 @@ namespace extentionerwf
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            Application.Run(new MainForm(new ExtensionSetter()));
+            Application.Run(new MainForm());
         }
     }
 }

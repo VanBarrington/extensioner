@@ -14,18 +14,13 @@ namespace extentionerwf
     {
         private string _folderSelection;
         private string _selectedExtension;
+        private bool _processingFiles;
+        private bool _cancelling;
 
         public MainForm()
         {
             InitializeComponent();
         }
-
-        public MainForm(ExtensionSetter extensionSetter) : this()
-        {
-            ExtensionSetter = extensionSetter;
-        }        
-
-        private ExtensionSetter ExtensionSetter { get; }
 
         private string FolderSelection {
             get
@@ -34,6 +29,18 @@ namespace extentionerwf
             }
             set {
                 _folderSelection = value;
+                CalculateUiState();
+            }
+        }
+
+        private bool ProcessingFiles {
+            get
+            {
+                return _processingFiles;
+            }
+            set
+            {
+                _processingFiles = value;
                 CalculateUiState();
             }
         }
@@ -59,18 +66,32 @@ namespace extentionerwf
             }
         }
 
+        private bool Cancelling
+        {
+            get
+            {
+                return _cancelling;
+            }
+            set
+            {
+                _cancelling = value;
+                CalculateUiState();
+            }
+        }
+
         private void ButtonGo_Click(object sender, EventArgs e)
         {
-            foreach (var f in ExtensionSetter.Set(FolderSelection, SelectedExtension))
-            {
-                listBox1.Items.Add(f);
-            }
+            listBoxProgress.Items.Clear();
+            ProcessingFiles = true;
+            extensionChangerWorker.RunWorkerAsync();
         }
 
         private void CalculateUiState()
         {
-            buttonGo.Enabled = SelectedFolderExists;
+            buttonGo.Enabled = SelectedFolderExists && !ProcessingFiles;
+            buttonSelectFolder.Enabled = !ProcessingFiles;
             textBoxFolderPathDisplay.Text = FolderSelection;
+            buttonCancel.Enabled = ProcessingFiles;
         }
 
         private void buttonSelectFolder_Click(object sender, EventArgs e)
@@ -86,6 +107,47 @@ namespace extentionerwf
         private void textBoxExtension_TextChanged(object sender, EventArgs e)
         {
             SelectedExtension = textBoxExtension.Text;
+        }
+
+        private void extensionChangerWorker_DoWork(object sender, DoWorkEventArgs e)
+        {
+            var exists = !string.IsNullOrWhiteSpace(FolderSelection) && System.IO.Directory.Exists(FolderSelection);
+            if (!exists) throw new ArgumentException($"Path \"{FolderSelection}\" doesn't exist.");
+            foreach (var f in System.IO.Directory.GetFiles(FolderSelection))
+            {
+                var newF = System.IO.Path.ChangeExtension(f, SelectedExtension);
+                System.IO.File.Move(f, newF);
+                extensionChangerWorker.ReportProgress(0, new FileProgress(f, newF));
+            }
+        }
+
+        private void extensionChangerWorker_ProgressChanged(object sender, ProgressChangedEventArgs e)
+        {
+            var fp = (FileProgress) e.UserState;
+            listBoxProgress.Items.Add($"{fp.Before} to {fp.After}");
+        }
+
+        private class FileProgress
+        {   
+            public FileProgress(string before, string after)
+            {
+                Before = before;
+                After = after;
+            }
+            public string Before { get; }
+            public string After { get; }
+        }
+
+        private void extensionChangerWorker_RunWorkerCompleted(object sender, RunWorkerCompletedEventArgs e)
+        {
+            Cancelling = false;
+            ProcessingFiles = false;
+        }
+
+        private void buttonCancel_Click(object sender, EventArgs e)
+        {
+            Cancelling = true;
+            extensionChangerWorker.CancelAsync();
         }
     }
 }
